@@ -16,6 +16,8 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     telegramToken: undefined,
     allowedUsers: [],
     sessionFile: '.bareclaw-sessions.json',
+    defaultProvider: 'claude',
+    bootstrapPromptFile: undefined,
     ...overrides,
   };
 }

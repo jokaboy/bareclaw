@@ -18,6 +18,14 @@ export interface Config {
   telegramToken: string | undefined;
   allowedUsers: number[];
   sessionFile: string;
+  /** Provider ID for new sessions (default: "claude") */
+  defaultProvider: string;
+  /**
+   * Path to a file whose contents are appended to every new session's
+   * system prompt. Use this to inject vault bootstrap instructions,
+   * project context, or standing orders.
+   */
+  bootstrapPromptFile: string | undefined;
 }
 
 export function loadConfig(): Config {
@@ -34,5 +42,7 @@ export function loadConfig(): Config {
       ? allowedUsersRaw.split(',').map((s) => parseInt(s.trim(), 10)).filter(Number.isFinite)
       : [],
     sessionFile: process.env.BARECLAW_SESSION_FILE || '.bareclaw-sessions.json',
+    defaultProvider: process.env.BARECLAW_PROVIDER || 'claude',
+    bootstrapPromptFile: process.env.BARECLAW_BOOTSTRAP_PROMPT || undefined,
   };
 }

@@ -165,6 +165,8 @@ export class ProcessManager {
       allowedTools: this.config.allowedTools,
       resumeSessionId: sessionId || undefined,
       channelContext: { channel, adapter: adapterNames[adapterPrefix] || adapterPrefix },
+      providerId: this.config.defaultProvider,
+      bootstrapPromptFile: this.config.bootstrapPromptFile,
     });
 
     const ext = import.meta.filename.endsWith('.ts') ? '.ts' : '.js';

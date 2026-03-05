@@ -1,5 +1,5 @@
 /**
- * Session host — a detached process that holds a Claude session.
+ * Session host — a detached process that holds a provider CLI session.
  * Survives server hot reloads. Communicates via Unix domain socket.
  *
  * Spawned by ProcessManager, not imported directly.
@@ -9,7 +9,9 @@
 import { spawn, type ChildProcess } from 'child_process';
 import { createServer, type Socket } from 'net';
 import { createInterface, type Interface } from 'readline';
-import { unlinkSync, writeFileSync, appendFileSync } from 'fs';
+import { unlinkSync, writeFileSync, appendFileSync, readFileSync } from 'fs';
+import { getProvider } from '../providers/registry.js';
+import type { Provider, SpawnOpts } from '../providers/types.js';
 
 interface HostConfig {
   channel: string;
@@ -20,6 +22,8 @@ interface HostConfig {
   allowedTools: string;
   resumeSessionId?: string;
   channelContext?: { channel: string; adapter: string };
+  providerId: string;
+  bootstrapPromptFile?: string;
 }
 
 const config: HostConfig = JSON.parse(process.argv[2]!);
@@ -30,80 +34,96 @@ function log(msg: string) {
   appendFileSync(logFile, `[${ts}] ${msg}\n`);
 }
 
+// Resolve provider
+let provider: Provider;
+try {
+  provider = getProvider(config.providerId);
+  log(`using provider: ${provider.id}`);
+} catch (err) {
+  log(`fatal: ${err instanceof Error ? err.message : err}`);
+  process.exit(1);
+}
+
 // Clean stale socket
 try { unlinkSync(config.socketPath); } catch {}
 
-// Strip API keys from env
-const { ANTHROPIC_API_KEY, CLAUDE_API_KEY, ...parentEnv } = process.env;
-const baseEnv = {
-  ...parentEnv,
-  CLAUDECODE: '',
-  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
-};
+// Strip provider-specific env keys
+const cleanEnv = { ...process.env };
+for (const key of provider.stripEnvKeys) {
+  delete cleanEnv[key];
+}
+// Apply provider extra env
+Object.assign(cleanEnv, provider.extraEnv);
 
-let claude: ChildProcess;
-let claudeRl: Interface;
+// Load bootstrap prompt if configured
+let bootstrapPrompt: string | undefined;
+if (config.bootstrapPromptFile) {
+  try {
+    bootstrapPrompt = readFileSync(config.bootstrapPromptFile, 'utf-8').trim();
+    log(`loaded bootstrap prompt from ${config.bootstrapPromptFile} (${bootstrapPrompt.length} chars)`);
+  } catch (err) {
+    log(`warning: could not read bootstrap prompt: ${err instanceof Error ? err.message : err}`);
+  }
+}
+
+let cliProcess: ChildProcess;
+let cliRl: Interface;
 let client: Socket | null = null;
 let lastSessionId: string | undefined = config.resumeSessionId;
 
-/**
- * Messages are written directly to Claude's stdin pipe. The OS pipe
- * handles buffering if Claude isn't ready to read yet — no application-
- * level gating needed.
- *
- * When Claude is dead (exited/crashed), we buffer messages until the next
- * spawnClaude() call flushes them into the new process's stdin.
- */
 let pendingMessages: string[] = [];
 
 function flushPending() {
   if (pendingMessages.length === 0) return;
   log(`flushing ${pendingMessages.length} buffered message(s)`);
   for (const msg of pendingMessages) {
-    if (claude.stdin && !claude.stdin.destroyed) {
-      claude.stdin.write(msg + '\n');
+    if (cliProcess.stdin && !cliProcess.stdin.destroyed) {
+      cliProcess.stdin.write(msg + '\n');
     }
   }
   pendingMessages = [];
 }
 
-function spawnClaude() {
-
-  const args = [
-    '-p',
-    '--input-format', 'stream-json',
-    '--output-format', 'stream-json',
-    '--verbose',
-    '--max-turns', String(config.maxTurns),
-    '--allowedTools', config.allowedTools,
-  ];
-  if (lastSessionId) {
-    args.push('--resume', lastSessionId);
-  }
+function spawnCliProcess() {
+  // Build system prompt append: channel context + bootstrap
+  const promptParts: string[] = [];
   if (config.channelContext) {
-    args.push('--append-system-prompt',
+    promptParts.push(
       `You are operating on BAREclaw channel "${config.channelContext.channel}" (adapter: ${config.channelContext.adapter}).`
     );
   }
+  if (bootstrapPrompt) {
+    promptParts.push(bootstrapPrompt);
+  }
 
-  log(`spawning claude${lastSessionId ? ` (resuming ${lastSessionId.substring(0, 8)}...)` : ''}`);
+  const spawnOpts: SpawnOpts = {
+    cwd: config.cwd,
+    maxTurns: config.maxTurns,
+    allowedTools: config.allowedTools,
+    resumeSessionId: lastSessionId,
+    systemPromptAppend: promptParts.length > 0 ? promptParts.join('\n\n') : undefined,
+  };
 
-  claude = spawn('claude', args, {
-    env: baseEnv as NodeJS.ProcessEnv,
+  const args = provider.buildArgs(spawnOpts);
+  log(`spawning ${provider.command}${lastSessionId ? ` (resuming ${lastSessionId.substring(0, 8)}...)` : ''}`);
+
+  cliProcess = spawn(provider.command, args, {
+    env: cleanEnv as NodeJS.ProcessEnv,
     cwd: config.cwd,
     stdio: ['pipe', 'pipe', 'pipe'],
   });
 
-  claudeRl = createInterface({ input: claude.stdout!, crlfDelay: Infinity });
+  cliRl = createInterface({ input: cliProcess.stdout!, crlfDelay: Infinity });
 
-  // Forward Claude stdout → socket client
-  claudeRl.on('line', (line) => {
+  // Forward stdout -> socket client
+  cliRl.on('line', (line) => {
     try {
       const event = JSON.parse(line);
 
       // Capture session ID for future respawns
-      if (event.type === 'result' && event.session_id) {
-        lastSessionId = event.session_id;
+      const sessionId = provider.extractSessionId(event);
+      if (sessionId) {
+        lastSessionId = sessionId;
         log(`captured session_id: ${lastSessionId!.substring(0, 8)}...`);
       }
     } catch {}
@@ -114,11 +134,11 @@ function spawnClaude() {
     }
   });
 
-  // Flush any messages that arrived while Claude was dead
+  // Flush any messages that arrived while CLI was dead
   flushPending();
 
-  // Forward Claude stderr → socket client as internal event
-  claude.stderr?.on('data', (chunk: Buffer) => {
+  // Forward stderr -> socket client as internal event
+  cliProcess.stderr?.on('data', (chunk: Buffer) => {
     const text = chunk.toString().trim();
     if (text) {
       log(`stderr: ${text.substring(0, 200)}`);
@@ -130,14 +150,13 @@ function spawnClaude() {
     }
   });
 
-  claude.on('error', (err) => {
-    log(`claude error: ${err.message}`);
+  cliProcess.on('error', (err) => {
+    log(`${provider.command} error: ${err.message}`);
   });
 
-  // Auto-respawn when Claude exits (max turns, crash, etc.)
-  claude.on('exit', (code) => {
-    log(`claude exited (code ${code}) — will respawn on next message`);
-    // Notify client that the current dispatch should fail gracefully
+  // Auto-respawn when CLI exits (max turns, crash, etc.)
+  cliProcess.on('exit', (code) => {
+    log(`${provider.command} exited (code ${code}) — will respawn on next message`);
     if (client && !client.destroyed) {
       try {
         client.write(JSON.stringify({
@@ -150,7 +169,7 @@ function spawnClaude() {
   });
 }
 
-spawnClaude();
+spawnCliProcess();
 
 // Socket server — accepts one client at a time (the bareclaw server)
 const server = createServer((socket) => {
@@ -162,16 +181,16 @@ const server = createServer((socket) => {
 
   const socketRl = createInterface({ input: socket, crlfDelay: Infinity });
   socketRl.on('line', (line) => {
-    // If Claude died, buffer the message and respawn
-    if (claude.exitCode !== null || claude.killed) {
+    // If CLI died, buffer the message and respawn
+    if (cliProcess.exitCode !== null || cliProcess.killed) {
       pendingMessages.push(line);
-      log('claude is dead, respawning before dispatch');
-      spawnClaude();
+      log(`${provider.command} is dead, respawning before dispatch`);
+      spawnCliProcess();
       return;
     }
 
-    if (claude.stdin && !claude.stdin.destroyed) {
-      claude.stdin.write(line + '\n');
+    if (cliProcess.stdin && !cliProcess.stdin.destroyed) {
+      cliProcess.stdin.write(line + '\n');
     }
   });
 
@@ -198,7 +217,7 @@ function cleanup() {
 
 process.on('SIGTERM', () => {
   log('SIGTERM received, shutting down');
-  claude.kill();
+  cliProcess.kill();
   cleanup();
   server.close();
   process.exit(0);

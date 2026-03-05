@@ -63,4 +63,22 @@ describe('loadConfig', () => {
     expect(config.cwd).not.toContain('~');
     expect(config.cwd).toMatch(/\/projects$/);
   });
+
+  it('defaults provider to claude', () => {
+    expect(loadConfig().defaultProvider).toBe('claude');
+  });
+
+  it('reads provider from env', () => {
+    process.env.BARECLAW_PROVIDER = 'codex';
+    expect(loadConfig().defaultProvider).toBe('codex');
+  });
+
+  it('defaults bootstrap prompt to undefined', () => {
+    expect(loadConfig().bootstrapPromptFile).toBeUndefined();
+  });
+
+  it('reads bootstrap prompt path from env', () => {
+    process.env.BARECLAW_BOOTSTRAP_PROMPT = '/path/to/prompt.md';
+    expect(loadConfig().bootstrapPromptFile).toBe('/path/to/prompt.md');
+  });
 });
