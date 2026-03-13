@@ -263,9 +263,9 @@ const HELP_SECTIONS: HelpSection[] = [
     title: 'Advanced / Operator',
     entries: [
       {
-        syntax: '/provider [list|claude|codex|ollama]',
+        syntax: '/provider [list|claude|codex|ollama|opencode]',
         purpose: 'List providers or switch the provider for this thread.',
-        good: ['/provider list', '/provider codex'],
+        good: ['/provider list', '/provider codex', '/provider opencode'],
         bad: ['/provider banana'],
       },
       {

@@ -2320,6 +2320,7 @@ describe('provider health reporting', () => {
     });
 
     vi.spyOn(getProvider('codex'), 'probeAvailability').mockResolvedValue(null);
+    vi.spyOn(getProvider('opencode'), 'probeAvailability').mockResolvedValue(null);
     vi.spyOn(getProvider('ollama'), 'probeAvailability').mockResolvedValue(
       'Ollama model "qwen3:4b" is not available at http://localhost:11434. Available: none. Run: ollama pull qwen3:4b'
     );
@@ -2328,6 +2329,7 @@ describe('provider health reporting', () => {
     const claude = statuses.find((provider) => provider.id === 'claude');
     const codex = statuses.find((provider) => provider.id === 'codex');
     const ollama = statuses.find((provider) => provider.id === 'ollama');
+    const opencode = statuses.find((provider) => provider.id === 'opencode');
 
     expect(claude).toMatchObject({
       status: 'degraded',
@@ -2342,6 +2344,9 @@ describe('provider health reporting', () => {
       checkedModel: 'qwen3:4b',
     });
     expect(ollama?.reason).toContain('Run: ollama pull qwen3:4b');
+    expect(opencode).toMatchObject({
+      status: 'available',
+    });
   });
 });
 

@@ -180,6 +180,21 @@ This controls the project context for all `claude` processes:
 - `~` — Claude sees your global `~/.claude/CLAUDE.md` and can access anything in your home directory
 - Set to BAREclaw's own directory for self-modification
 
+### Shared skill library
+
+BAREClaw does not maintain its own separate skill inventory. It shells out to the
+selected provider CLI and inherits that provider's normal home/config roots.
+
+- `codex` sessions read skills from `~/.codex/skills` (canonical shared root)
+- `claude` sessions read skills from `~/.claude/skills`
+- `opencode` sessions inherit the shared skill paths configured in `~/.config/opencode/opencode.json`
+- on this machine, `~/.claude/skills` is expected to resolve to the same shared
+  library at `~/.codex/skills`, and OpenCode is configured to use that same root
+
+If you are troubleshooting skill visibility, verify the provider's home-level
+skill path first. BAREClaw itself only needs to preserve `HOME` and spawn the
+provider cleanly.
+
 ## Telegram thread controls
 
 Telegram threads now carry their own persisted runtime state separate from raw provider chat history. Same DM or topic resumes automatically. Plain English is the normal path: say "start planning", "make the work item", "get to work", or "promote this project". Slash commands remain available as operator tools. Unbound threads auto-start in the default ideas lane on the next ordinary message unless you override that binding explicitly.
@@ -188,7 +203,7 @@ These commands operate on the current DM, group, or forum topic channel:
 
 - `/status` — show provider, model, startup mode, binding status, capability profile, tool mode, write state/reason/remediation, work-item mode/selection mode, continuity source/sync health, and queue/busy state
 - `/help` — show the current thread state plus the full grouped command reference with exact syntax and good/bad examples
-- `/provider [list|claude|codex|ollama]` — switch provider for the thread and reset only the raw provider session
+- `/provider [list|claude|codex|ollama|opencode]` — switch provider for the thread and reset only the raw provider session
 - `/model [list|default|<model>]` — change the thread model when the selected provider exposes known models
 - `/mode [list|auto_resume|fresh_with_handoff|warm_lcm_restore|raw_provider_resume]` — advanced startup override; the default is `auto_resume`
 - `/project <vault project path>` — bind the thread to a project path and reset the live/raw provider session so the next turn starts from that project

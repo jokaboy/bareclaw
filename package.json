@@ -8,7 +8,8 @@
     "test": "vitest run",
     "build": "tsc",
     "start": "node --env-file=.env dist/index.js",
-    "smoke:ollama": "tsx --env-file=.env scripts/smoke_ollama_provider.ts"
+    "smoke:ollama": "tsx --env-file=.env scripts/smoke_ollama_provider.ts",
+    "smoke:opencode": "tsx --env-file=.env scripts/smoke_opencode_provider.ts"
   },
   "dependencies": {
     "@openai/codex-sdk": "^0.112.0",

@@ -354,6 +354,10 @@ describe('createTelegramAdapter integration', () => {
           status: 'unavailable',
           reason: 'Ollama model \"qwen3:4b\" is not available at http://localhost:11434. Available: none. Run: ollama pull qwen3:4b',
         },
+        {
+          id: 'opencode',
+          status: 'available',
+        },
       ])),
     });
     const { bot } = createTelegramAdapter(makeTelegramConfig(), pm);
@@ -366,6 +370,7 @@ describe('createTelegramAdapter integration', () => {
     expect(text).toContain('current_model: qwen3:4b');
     expect(text).toContain('- claude (status: degraded; reason: No startup probe available.)');
     expect(text).toContain('- codex (default: gpt-5.3-codex; checked: gpt-5.3-codex; status: available)');
+    expect(text).toContain('- opencode (status: available)');
     expect(text).toContain('Run: ollama pull qwen3:4b');
   });
 

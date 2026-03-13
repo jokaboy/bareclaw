@@ -11,6 +11,7 @@ import {
 import { ClaudeProvider } from './claude.js';
 import { CodexProvider } from './codex.js';
 import { OllamaProvider } from './ollama.js';
+import { OpenCodeProvider } from './opencode.js';
 import { TSX_LOADER_SPECIFIER } from '../tsx-loader.js';
 
 function expectBridgeLaunchArgs(args: string[], bridgeName: string): void {
@@ -173,6 +174,29 @@ describe('provider arg wiring', () => {
     expect(args).toContain('full');
     expect(args).toContain('--capability-profile');
     expect(args).toContain('execution_ready');
+  });
+
+  it('threads capability args into the OpenCode bridge launch', () => {
+    const provider = new OpenCodeProvider();
+    const args = provider.buildArgs({
+      cwd: '/tmp/example',
+      maxTurns: 25,
+      allowedTools: 'Read,Glob,Grep,Bash,Write,Edit',
+      capabilityProfile: 'planning_only',
+      toolMode: 'read_only',
+      model: 'openai/gpt-5',
+      systemPromptAppend: 'Prompt',
+    });
+
+    expectBridgeLaunchArgs(args, 'opencode-bridge');
+    expect(args).toContain('--cwd');
+    expect(args).toContain('/tmp/example');
+    expect(args).toContain('--capability-profile');
+    expect(args).toContain('planning_only');
+    expect(args).toContain('--tool-mode');
+    expect(args).toContain('read_only');
+    expect(args).toContain('--model');
+    expect(args).toContain('openai/gpt-5');
   });
 
   it('filters the Claude allowlist before spawning', () => {

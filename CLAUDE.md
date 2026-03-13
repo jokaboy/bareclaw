@@ -132,7 +132,7 @@ These are handled by BAREclaw before they reach you. When the user asks about th
 
 **Session management:**
 - `/help` — show the quick start and next plain-English actions
-- `/provider [list|claude|codex|ollama]` — switch provider for this thread
+- `/provider [list|claude|codex|ollama|opencode]` — switch provider for this thread
 - `/model [list|default|<model>]` — change the thread model
 - `/mode [list|auto_resume|fresh_with_handoff|warm_lcm_restore|raw_provider_resume]` — advanced startup-mode override
 - `/new` — start fresh on the next spawn in the same lane

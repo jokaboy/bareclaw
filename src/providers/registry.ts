@@ -7,6 +7,7 @@ import type { Provider } from './types.js';
 import { ClaudeProvider } from './claude.js';
 import { CodexProvider } from './codex.js';
 import { OllamaProvider } from './ollama.js';
+import { OpenCodeProvider } from './opencode.js';
 
 const providers = new Map<string, Provider>();
 
@@ -35,3 +36,4 @@ export function listProviderEntries(): Provider[] {
 registerProvider(new ClaudeProvider());
 registerProvider(new CodexProvider());
 registerProvider(new OllamaProvider());
+registerProvider(new OpenCodeProvider());
