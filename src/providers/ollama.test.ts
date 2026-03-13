@@ -24,13 +24,13 @@ describe('ollama health helpers', () => {
       ok: true,
       json: async () => ({
         models: [
-          { name: 'qwen3:4b' },
+          { name: 'qwen3.5:9b' },
           { name: 'gpt-oss:20b' },
         ],
       }),
     })));
 
-    await expect(probeOllamaAvailability({ model: 'qwen3:4b' })).resolves.toBeNull();
+    await expect(probeOllamaAvailability({ model: 'qwen3.5:9b' })).resolves.toBeNull();
   });
 
   it('reports a clear pull command when the requested model is missing', async () => {
@@ -43,7 +43,7 @@ describe('ollama health helpers', () => {
       }),
     })));
 
-    await expect(probeOllamaAvailability({ model: 'qwen3:4b' })).resolves.toContain('Run: ollama pull qwen3:4b');
+    await expect(probeOllamaAvailability({ model: 'qwen3.5:9b' })).resolves.toContain('Run: ollama pull qwen3.5:9b');
   });
 
   it('surfaces host-unreachable failures with the target host', async () => {

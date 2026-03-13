@@ -400,7 +400,7 @@ Both are intake lanes — you land in `intake_capture` (read-only).
 
 - **ID:** `ollama`
 - **Command:** Bridge script (`node src/providers/ollama-bridge.ts`)
-- **Models:** `gemma3:4b`, `qwen3:4b` (default), `qwen3-vl:8b`, `gpt-oss:20b`
+- **Models:** `gemma3:4b`, `qwen3:4b`, `qwen3.5:9b` (default), `qwen3-vl:8b`, `gpt-oss:20b`
 - **Capabilities:** Tools, streaming, session resume (no vision)
 
 ### OpenCode

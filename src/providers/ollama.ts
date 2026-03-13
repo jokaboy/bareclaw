@@ -17,8 +17,8 @@ export class OllamaProvider implements Provider {
     sessionResume: true,
   };
 
-  availableModels = ['gemma3:4b', 'qwen3:4b', 'qwen3-vl:8b', 'gpt-oss:20b'];
-  defaultModel = 'qwen3:4b';
+  availableModels = ['gemma3:4b', 'qwen3:4b', 'qwen3.5:9b', 'qwen3-vl:8b', 'gpt-oss:20b'];
+  defaultModel = 'qwen3.5:9b';
 
   async probeAvailability(options?: ProviderProbeOptions): Promise<string | null> {
     try {

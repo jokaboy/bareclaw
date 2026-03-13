@@ -16,7 +16,7 @@ function getArg(name: string): string | undefined {
   return idx >= 0 && idx + 1 < args.length ? args[idx + 1] : undefined;
 }
 
-const model = getArg('--model') || process.env.BARECLAW_OLLAMA_MODEL || 'qwen3:4b';
+const model = getArg('--model') || process.env.BARECLAW_OLLAMA_MODEL || 'qwen3.5:9b';
 const resumeId = getArg('--resume');
 const systemPrompt = getArg('--system-prompt');
 const capabilityProfile = (getArg('--capability-profile') || 'planning_only') as CapabilityProfile;

@@ -165,7 +165,7 @@ describe('provider arg wiring', () => {
       allowedTools: 'Read,Glob,Grep,Bash,Write,Edit',
       capabilityProfile: 'execution_ready',
       toolMode: 'full',
-      model: 'qwen3:4b',
+      model: 'qwen3.5:9b',
       systemPromptAppend: 'Prompt',
     });
 

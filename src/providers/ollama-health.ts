@@ -13,7 +13,7 @@ export interface OllamaTagsResponse {
 }
 
 export const DEFAULT_OLLAMA_HOST = 'http://localhost:11434';
-export const DEFAULT_OLLAMA_MODEL = 'qwen3:4b';
+export const DEFAULT_OLLAMA_MODEL = 'qwen3.5:9b';
 
 export function resolveOllamaHost(host?: string): string {
   const resolved = (host || process.env.BARECLAW_OLLAMA_HOST || DEFAULT_OLLAMA_HOST).trim();

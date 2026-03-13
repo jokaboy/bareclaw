@@ -333,7 +333,7 @@ describe('createTelegramAdapter integration', () => {
   it('renders /provider list with live health status and failure reasons', async () => {
     const { pm } = makeProcessManagerStub({
       providerId: 'ollama',
-      model: 'qwen3:4b',
+      model: 'qwen3.5:9b',
     }, {
       getAvailableProviderStatuses: vi.fn(async () => ([
         {
@@ -349,10 +349,10 @@ describe('createTelegramAdapter integration', () => {
         },
         {
           id: 'ollama',
-          defaultModel: 'qwen3:4b',
-          checkedModel: 'qwen3:4b',
+          defaultModel: 'qwen3.5:9b',
+          checkedModel: 'qwen3.5:9b',
           status: 'unavailable',
-          reason: 'Ollama model \"qwen3:4b\" is not available at http://localhost:11434. Available: none. Run: ollama pull qwen3:4b',
+          reason: 'Ollama model \"qwen3.5:9b\" is not available at http://localhost:11434. Available: none. Run: ollama pull qwen3.5:9b',
         },
         {
           id: 'opencode',
@@ -367,11 +367,11 @@ describe('createTelegramAdapter integration', () => {
 
     const text = sentMessageTexts(calls).join('\n');
     expect(text).toContain('current_provider: ollama');
-    expect(text).toContain('current_model: qwen3:4b');
+    expect(text).toContain('current_model: qwen3.5:9b');
     expect(text).toContain('- claude (status: degraded; reason: No startup probe available.)');
     expect(text).toContain('- codex (default: gpt-5.3-codex; checked: gpt-5.3-codex; status: available)');
     expect(text).toContain('- opencode (status: available)');
-    expect(text).toContain('Run: ollama pull qwen3:4b');
+    expect(text).toContain('Run: ollama pull qwen3.5:9b');
   });
 
   it('renders plain-English help requests as the full grouped command reference', async () => {

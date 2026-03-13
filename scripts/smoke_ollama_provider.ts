@@ -8,7 +8,7 @@ import { ProcessManager } from '../src/core/process-manager.js';
 const PROJECT_PATH = '0 Agent Vault/Agents/10_Projects/misc-projects/bareclaw';
 const WORKSPACE_ID = 'misc-projects';
 const PROJECT_ID = 'bareclaw';
-const DEFAULT_MODEL = process.env.BARECLAW_OLLAMA_SMOKE_MODEL || 'qwen3:4b';
+const DEFAULT_MODEL = process.env.BARECLAW_OLLAMA_SMOKE_MODEL || 'qwen3.5:9b';
 
 function buildSmokeConfig(stateDir: string): Config {
   const base = loadConfig();

@@ -2316,13 +2316,13 @@ describe('provider health reporting', () => {
     const pm = new ProcessManager(makeConfig(tmpDir));
     (pm as any).channelStateStore.update('tg-123', {
       providerId: 'ollama',
-      model: 'qwen3:4b',
+      model: 'qwen3.5:9b',
     });
 
     vi.spyOn(getProvider('codex'), 'probeAvailability').mockResolvedValue(null);
     vi.spyOn(getProvider('opencode'), 'probeAvailability').mockResolvedValue(null);
     vi.spyOn(getProvider('ollama'), 'probeAvailability').mockResolvedValue(
-      'Ollama model "qwen3:4b" is not available at http://localhost:11434. Available: none. Run: ollama pull qwen3:4b'
+      'Ollama model "qwen3.5:9b" is not available at http://localhost:11434. Available: none. Run: ollama pull qwen3.5:9b'
     );
 
     const statuses = await pm.getAvailableProviderStatuses('tg-123');
@@ -2341,9 +2341,9 @@ describe('provider health reporting', () => {
     });
     expect(ollama).toMatchObject({
       status: 'unavailable',
-      checkedModel: 'qwen3:4b',
+      checkedModel: 'qwen3.5:9b',
     });
-    expect(ollama?.reason).toContain('Run: ollama pull qwen3:4b');
+    expect(ollama?.reason).toContain('Run: ollama pull qwen3.5:9b');
     expect(opencode).toMatchObject({
       status: 'available',
     });
