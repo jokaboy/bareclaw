@@ -16,6 +16,10 @@ export interface SpawnOpts {
   toolMode: ProviderToolMode;
 }
 
+export interface ProviderProbeOptions {
+  model?: string;
+}
+
 export interface Provider {
   /** Unique identifier: "claude", "codex", "ollama", etc. */
   id: string;
@@ -30,7 +34,7 @@ export interface Provider {
    * Optional light-weight startup probe used before spawning a session host.
    * Return a human-readable failure reason when the provider cannot start.
    */
-  probeAvailability?(): Promise<string | null>;
+  probeAvailability?(options?: ProviderProbeOptions): Promise<string | null>;
 
   /** Env var keys to strip before spawning (prevent key leakage) */
   stripEnvKeys: string[];

@@ -7,7 +7,8 @@
     "dev": "tsx watch --env-file=.env src/index.ts",
     "test": "vitest run",
     "build": "tsc",
-    "start": "node --env-file=.env dist/index.js"
+    "start": "node --env-file=.env dist/index.js",
+    "smoke:ollama": "tsx --env-file=.env scripts/smoke_ollama_provider.ts"
   },
   "dependencies": {
     "@openai/codex-sdk": "^0.112.0",

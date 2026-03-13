@@ -118,6 +118,17 @@ interface SpawnPlan {
   continuityBlock?: string;
 }
 
+export type ProviderAvailabilityStatus = 'available' | 'degraded' | 'unavailable';
+
+export interface AvailableProviderStatus {
+  id: string;
+  defaultModel?: string;
+  availableModels?: string[];
+  status: ProviderAvailabilityStatus;
+  reason?: string;
+  checkedModel?: string;
+}
+
 export type WarmChannelStatus = 'warmed' | 'skipped_missing_state' | 'skipped_busy' | 'failed';
 
 export interface WarmChannelResult {
@@ -217,10 +228,10 @@ export class ProcessManager {
     }
   }
 
-  private async probeProviderAvailability(providerId: string): Promise<string | null> {
+  private async probeProviderAvailability(providerId: string, model?: string): Promise<string | null> {
     const provider = getProvider(providerId);
     if (!provider.probeAvailability) return null;
-    return provider.probeAvailability();
+    return provider.probeAvailability({ model });
   }
 
   private buildProviderFallbackNotice(
@@ -434,6 +445,38 @@ export class ProcessManager {
       defaultModel: provider.defaultModel,
       availableModels: provider.availableModels,
     }));
+  }
+
+  async getAvailableProviderStatuses(channel?: string): Promise<AvailableProviderStatus[]> {
+    const current = channel ? this.getChannelState(channel) : undefined;
+    const providers = listProviderEntries();
+    const results = await Promise.all(providers.map(async (provider) => {
+      const checkedModel = current?.providerId === provider.id
+        ? current.model || provider.defaultModel
+        : provider.defaultModel;
+      if (!provider.probeAvailability) {
+        return {
+          id: provider.id,
+          defaultModel: provider.defaultModel,
+          availableModels: provider.availableModels,
+          checkedModel,
+          status: 'degraded' as const,
+          reason: 'No startup probe available.',
+        };
+      }
+
+      const reason = await provider.probeAvailability({ model: checkedModel });
+      return {
+        id: provider.id,
+        defaultModel: provider.defaultModel,
+        availableModels: provider.availableModels,
+        checkedModel,
+        status: reason ? 'unavailable' as const : 'available' as const,
+        reason: reason || undefined,
+      };
+    }));
+
+    return results;
   }
 
   getChannelState(channel: string): ChannelState {
@@ -2388,7 +2431,10 @@ export class ProcessManager {
   private async connectOrSpawn(channel: string): Promise<ManagedChannel> {
     let channelState = this.channelStateStore.get(channel);
     let provider = getProvider(channelState.providerId);
-    const availabilityFailure = await this.probeProviderAvailability(provider.id);
+    const availabilityFailure = await this.probeProviderAvailability(
+      provider.id,
+      channelState.model || provider.defaultModel
+    );
     if (availabilityFailure) {
       await this.applyProviderStartupFallback(channel, provider.id, availabilityFailure);
       channelState = this.channelStateStore.get(channel);

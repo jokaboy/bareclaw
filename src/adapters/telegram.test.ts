@@ -142,6 +142,7 @@ function makeProcessManagerStub(state: Record<string, unknown> = {}, overrides: 
     }),
     send: vi.fn().mockResolvedValue({ text: 'Execution reply', duration_ms: 40, is_error: false }),
     getAvailableProviders: vi.fn(() => []),
+    getAvailableProviderStatuses: vi.fn(async () => []),
     setChannelProvider: vi.fn(),
     setChannelStartupMode: vi.fn(),
     setChannelModel: vi.fn(),
@@ -327,6 +328,45 @@ describe('createTelegramAdapter integration', () => {
     expect(texts.join('\n')).toContain('/approval approve &lt;request_id&gt; [note]');
     expect(texts.join('\n')).toContain('/reset full');
     expect(texts.join('\n')).not.toContain('Try one of these:');
+  });
+
+  it('renders /provider list with live health status and failure reasons', async () => {
+    const { pm } = makeProcessManagerStub({
+      providerId: 'ollama',
+      model: 'qwen3:4b',
+    }, {
+      getAvailableProviderStatuses: vi.fn(async () => ([
+        {
+          id: 'claude',
+          status: 'degraded',
+          reason: 'No startup probe available.',
+        },
+        {
+          id: 'codex',
+          defaultModel: 'gpt-5.3-codex',
+          checkedModel: 'gpt-5.3-codex',
+          status: 'available',
+        },
+        {
+          id: 'ollama',
+          defaultModel: 'qwen3:4b',
+          checkedModel: 'qwen3:4b',
+          status: 'unavailable',
+          reason: 'Ollama model \"qwen3:4b\" is not available at http://localhost:11434. Available: none. Run: ollama pull qwen3:4b',
+        },
+      ])),
+    });
+    const { bot } = createTelegramAdapter(makeTelegramConfig(), pm);
+    const calls = captureTelegramApiCalls(bot);
+
+    await dispatchTextUpdate(bot, '/provider list');
+
+    const text = sentMessageTexts(calls).join('\n');
+    expect(text).toContain('current_provider: ollama');
+    expect(text).toContain('current_model: qwen3:4b');
+    expect(text).toContain('- claude (status: degraded; reason: No startup probe available.)');
+    expect(text).toContain('- codex (default: gpt-5.3-codex; checked: gpt-5.3-codex; status: available)');
+    expect(text).toContain('Run: ollama pull qwen3:4b');
   });
 
   it('renders plain-English help requests as the full grouped command reference', async () => {

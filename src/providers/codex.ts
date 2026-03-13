@@ -1,6 +1,6 @@
 import { resolve } from 'path';
 import { TSX_LOADER_SPECIFIER } from '../tsx-loader.js';
-import type { Provider, SpawnOpts } from './types.js';
+import type { Provider, ProviderProbeOptions, SpawnOpts } from './types.js';
 
 export class CodexProvider implements Provider {
   id = 'codex' as const;
@@ -19,7 +19,7 @@ export class CodexProvider implements Provider {
   availableModels = ['o3', 'o4-mini', 'gpt-5.3-codex', 'codex-mini'];
   defaultModel = 'gpt-5.3-codex';
 
-  async probeAvailability(): Promise<string | null> {
+  async probeAvailability(_options?: ProviderProbeOptions): Promise<string | null> {
     try {
       await import('@openai/codex-sdk');
       return null;

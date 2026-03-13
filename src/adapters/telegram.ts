@@ -1217,14 +1217,20 @@ export function createTelegramAdapter(config: Config, processManager: ProcessMan
         case 'provider': {
           if (command.args.length === 0 || command.args[0] === 'list') {
             const current = processManager.getChannelState(channel);
-            const providers = processManager.getAvailableProviders();
+            const providers = await processManager.getAvailableProviderStatuses(channel);
             const lines = [
               `current_provider: ${current.providerId}`,
               `current_model: ${current.model || 'provider-default'}`,
               'available_providers:',
-              ...providers.map((provider) =>
-                `- ${provider.id}${provider.defaultModel ? ` (default: ${provider.defaultModel})` : ''}`
-              ),
+              ...providers.map((provider) => {
+                const details = [
+                  provider.defaultModel ? `default: ${provider.defaultModel}` : undefined,
+                  provider.checkedModel ? `checked: ${provider.checkedModel}` : undefined,
+                  `status: ${provider.status}`,
+                  provider.reason ? `reason: ${provider.reason}` : undefined,
+                ].filter(Boolean);
+                return `- ${provider.id}${details.length ? ` (${details.join('; ')})` : ''}`;
+              }),
             ];
             await replyPre(ctx, lines.join('\n'));
             return true;

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { resolve } from 'path';
@@ -2288,6 +2288,60 @@ describe('ProcessManager reconnect behavior', () => {
         handoffSummary: expect.stringContaining('Recommended next step'),
       })
     );
+  });
+});
+
+describe('provider health reporting', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('passes the selected model into provider availability probes', async () => {
+    const pm = new ProcessManager(makeConfig(tmpDir));
+    const provider = getProvider('ollama');
+    const probeSpy = vi.spyOn(provider, 'probeAvailability').mockResolvedValue(null);
+
+    await expect((pm as any).probeProviderAvailability('ollama', 'gpt-oss:20b')).resolves.toBeNull();
+
+    expect(probeSpy).toHaveBeenCalledWith({ model: 'gpt-oss:20b' });
+  });
+
+  it('reports live provider health with selected models and degraded unprobed providers', async () => {
+    const pm = new ProcessManager(makeConfig(tmpDir));
+    (pm as any).channelStateStore.update('tg-123', {
+      providerId: 'ollama',
+      model: 'qwen3:4b',
+    });
+
+    vi.spyOn(getProvider('codex'), 'probeAvailability').mockResolvedValue(null);
+    vi.spyOn(getProvider('ollama'), 'probeAvailability').mockResolvedValue(
+      'Ollama model "qwen3:4b" is not available at http://localhost:11434. Available: none. Run: ollama pull qwen3:4b'
+    );
+
+    const statuses = await pm.getAvailableProviderStatuses('tg-123');
+    const claude = statuses.find((provider) => provider.id === 'claude');
+    const codex = statuses.find((provider) => provider.id === 'codex');
+    const ollama = statuses.find((provider) => provider.id === 'ollama');
+
+    expect(claude).toMatchObject({
+      status: 'degraded',
+      reason: 'No startup probe available.',
+    });
+    expect(codex).toMatchObject({
+      status: 'available',
+      checkedModel: 'gpt-5.3-codex',
+    });
+    expect(ollama).toMatchObject({
+      status: 'unavailable',
+      checkedModel: 'qwen3:4b',
+    });
+    expect(ollama?.reason).toContain('Run: ollama pull qwen3:4b');
   });
 });
 
