@@ -1,0 +1,13 @@
+[Unit]
+Description=BAREclaw daemon
+After=network.target
+
+[Service]
+Type=simple
+Environment=BARECLAW_SUPERVISED=1
+ExecStart=/bin/bash -lc 'cd "__BARECLAW_DIR__" && exec "__NODE_BIN__" --env-file="__ENV_FILE__" "__APP_ENTRY__"'
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Template plist. install.sh replaces the placeholders with absolute paths
+  before copying to ~/Library/LaunchAgents/.
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.bareclaw.daemon</string>
+
+	<key>ProgramArguments</key>
+	<array>
+		<string>__NODE_BIN__</string>
+		<string>--env-file=__ENV_FILE__</string>
+		<string>__APP_ENTRY__</string>
+	</array>
+
+	<key>WorkingDirectory</key>
+	<string>__BARECLAW_DIR__</string>
+
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>BARECLAW_SUPERVISED</key>
+		<string>1</string>
+	</dict>
+
+	<key>KeepAlive</key>
+	<true/>
+	<key>RunAtLoad</key>
+	<true/>
+
+	<key>StandardOutPath</key>
+	<string>/tmp/bareclaw-daemon.log</string>
+	<key>StandardErrorPath</key>
+	<string>/tmp/bareclaw-daemon.log</string>
+</dict>
+</plist>

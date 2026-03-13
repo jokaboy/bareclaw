@@ -5,6 +5,7 @@
  */
 
 import type { Provider, SpawnOpts } from './types.js';
+import { filterAllowedToolsForProfile } from './capability.js';
 
 export class ClaudeProvider implements Provider {
   id = 'claude' as const;
@@ -24,14 +25,18 @@ export class ClaudeProvider implements Provider {
     sessionResume: true,
   };
 
+  availableModels: string[] = [];
+  defaultModel = undefined;
+
   buildArgs(opts: SpawnOpts): string[] {
+    const allowedTools = filterAllowedToolsForProfile(opts.allowedTools, opts.capabilityProfile);
     const args = [
       '-p',
       '--input-format', 'stream-json',
       '--output-format', 'stream-json',
       '--verbose',
       '--max-turns', String(opts.maxTurns),
-      '--allowedTools', opts.allowedTools,
+      '--allowedTools', allowedTools,
     ];
 
     if (opts.resumeSessionId) {

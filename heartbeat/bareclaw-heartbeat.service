@@ -4,4 +4,4 @@ After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=__HEARTBEAT_SCRIPT__
+ExecStart=/bin/bash "__HEARTBEAT_SCRIPT__"

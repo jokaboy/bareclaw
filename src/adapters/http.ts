@@ -3,21 +3,39 @@ import type { Config } from '../config.js';
 import type { ProcessManager } from '../core/process-manager.js';
 import type { ChannelContext, PushMedia, SendMessageRequest } from '../core/types.js';
 import type { PushRegistry } from '../core/push-registry.js';
+import type { StartupHealthSnapshot } from '../startup-coordinator.js';
 
-export function createHttpAdapter(config: Config, processManager: ProcessManager, restart: () => void, pushRegistry: PushRegistry): Router {
+export function createHttpAdapter(
+  config: Config,
+  processManager: ProcessManager,
+  restart: () => void | Promise<void>,
+  pushRegistry: PushRegistry,
+  getHealth: () => StartupHealthSnapshot
+): Router {
   const router = express.Router();
 
-  // Bearer token auth middleware
-  if (config.httpToken) {
-    router.use((req: Request, res: Response, next: NextFunction) => {
-      const header = req.headers.authorization;
-      if (header !== `Bearer ${config.httpToken}`) {
-        res.status(401).json({ error: 'Unauthorized' });
-        return;
-      }
+  // Bearer token auth middleware — applied to all endpoints except /healthz.
+  // When httpToken is not configured, privileged endpoints are rejected
+  // to prevent unauthenticated access to Claude sessions and daemon control.
+  router.use((req: Request, res: Response, next: NextFunction) => {
+    // /healthz is always public so monitoring tools can check liveness
+    if (req.path === '/healthz' && req.method === 'GET') {
       next();
-    });
-  }
+      return;
+    }
+
+    if (!config.httpToken) {
+      res.status(401).json({ error: 'HTTP auth not configured — set BARECLAW_HTTP_TOKEN' });
+      return;
+    }
+
+    const header = req.headers.authorization;
+    if (header !== `Bearer ${config.httpToken}`) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    next();
+  });
 
   router.post('/message', async (req, res) => {
     const { text, channel, content } = req.body as SendMessageRequest & { content?: unknown };
@@ -84,11 +102,17 @@ export function createHttpAdapter(config: Config, processManager: ProcessManager
     }
   });
 
+  router.get('/healthz', (_req, res) => {
+    res.json(getHealth());
+  });
+
   router.post('/restart', (_req, res) => {
     console.log('[http] restart requested');
     res.json({ status: 'restarting' });
     // Delay to let the response flush
-    setTimeout(restart, 100);
+    setTimeout(() => {
+      void restart();
+    }, 100);
   });
 
   return router;

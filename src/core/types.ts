@@ -1,3 +1,5 @@
+import type { CapabilityGuidance } from './capability-guidance.js';
+
 /** Content block for multimodal messages (text + images) */
 export type ContentBlock =
   | { type: 'text'; text: string }
@@ -59,6 +61,10 @@ export type PushHandler = (channel: string, text: string, media?: PushMedia) => 
 export interface SendMessageResponse {
   text: string;
   duration_ms: number;
+  terminalKind?: 'ok' | 'capability_denied' | 'error';
+  capabilityGuidance?: CapabilityGuidance;
+  /** Optional operator-facing notice to surface alongside the reply. */
+  system_notice?: string;
   /**
    * True if this message was coalesced into a subsequent queued message.
    * When set, the caller should skip sending a response — the combined

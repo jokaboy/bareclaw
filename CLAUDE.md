@@ -21,7 +21,7 @@ You can schedule background work using **launchd** (macOS). Use these when the u
 
 ### Heartbeat
 
-BAREclaw has a supervised daemon plus a built-in heartbeat. The heartbeat checks `/healthz`, restarts the managed daemon when needed, and then fires hourly on the `"heartbeat"` channel.
+BAREclaw has a supervised daemon plus a built-in heartbeat. The heartbeat checks `/healthz`, restarts the managed daemon when needed, then runs a read-only triage prompt on the `"heartbeat"` channel. If the response starts with `ATTENTION:`, the shell wrapper forwards it to the configured Telegram target.
 
 ### Proactive messaging
 
@@ -71,6 +71,27 @@ Unbound threads auto-bind on the next ordinary message:
 4. `/workitem auto` or `/workitem create <title>` — bind a work item
 5. Now in `execution_ready` — full write access
 
+### Greeting and orientation
+
+When the user sends a greeting, status check, or "what can I do" type message, respond with a short contextual orientation — not a system dump. Structure:
+
+1. **Where you are** — one line: mode, project (if bound), work item (if any)
+2. **What you can do now** — 2-4 relevant commands for the current mode, not the full list
+3. **Next step** — one sentence on how to move forward
+
+Mode-specific focus:
+
+| Mode | Surface these | Next step hint |
+|------|--------------|----------------|
+| `unbound` | just send a message, or `/project` | "send me anything to get started" |
+| `intake_capture` | `/project promote`, `/project bootstrap` | "plan here, then promote when ready" |
+| `planning_only` | `/workitem create`, `/workitem auto`, `/approval request` | "bind a work item to unlock writes" |
+| `approval_pending` | `/approval approve <id>`, `/approval deny` | "approve to proceed, or keep planning" |
+| `execution_ready` | `/workitem settle`, `/workitem verify` | "you're live — work and settle when done" |
+| `run_lock_blocked` | show blocking thread info | "wait for the lock or switch projects" |
+
+Keep it conversational. Two to four short lines, not a wall of text. If there's a handoff summary or active work item, weave that in — the user wants to know what was happening, not just what mode they're in.
+
 ### Thread commands
 
 These are handled by BAREclaw before they reach you. When the user asks about them, explain what they do:
@@ -110,11 +131,26 @@ These are handled by BAREclaw before they reach you. When the user asks about th
 - `/checkpoint refresh` — refresh the checkpoint timestamp
 
 **Session management:**
+- `/help` — show the quick start and next plain-English actions
 - `/provider [list|claude|codex|ollama]` — switch provider for this thread
 - `/model [list|default|<model>]` — change the thread model
-- `/mode [list|fresh_with_handoff|warm_lcm_restore|raw_provider_resume]` — choose startup mode
+- `/mode [list|auto_resume|fresh_with_handoff|warm_lcm_restore|raw_provider_resume]` — advanced startup-mode override
+- `/new` — start fresh on the next spawn in the same lane
 - `/reset` — clear raw provider session only
 - `/reset --full` — clear session and project continuity; next message auto-starts in ideas lane
+
+## Security Duties
+
+BAREclaw is the automated arm of the vault security assurance program.
+
+- **Hourly scan**: `heartbeat/security-scan.sh` runs secret-pattern, env-tracking, and gitignore checks across Easy Listening, Audubonizer, and BAREclaw. It runs after heartbeat health checks.
+- **Knowledge scan**: `heartbeat/knowledge-scan.sh` runs lightweight web-memory assurance checks and reports urgent findings on the `knowledge-scan` channel.
+- **Daily scan**: `heartbeat/com.bareclaw.security-scan.plist` triggers a full scan at 6am including `npm audit`, `pip-audit`, and `render.yaml` audit.
+- **Launchd caveat**: if macOS denies repo file access under `~/Documents`, the scan now logs a skip instead of fabricating a security incident.
+- **Finding routing**: Scan findings are sent via `/message` to the `security-scan` channel, where the agent records vault incidents using `agents_record_incident` with the `security_failure_mode` field.
+- **Critical escalation**: Critical findings trigger a proactive Telegram notification to the operator.
+- **Vault context**: The full security program lives in the vault at `0 Agent Vault/Agents/40_Ledger/Security/`. The operations runbook (`Program/security-operations-runbook.md`) has triage flows, SLAs, and the policy-to-test map.
+- **Threat model**: BAREclaw's own threat model is at `40_Ledger/Security/Threat Models/bareclaw-threat-model.md` in the vault.
 
 ## Conventions
 

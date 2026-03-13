@@ -18,6 +18,16 @@
 	<key>StartInterval</key>
 	<integer>3600</integer>
 
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>BARECLAW_DIR_OVERRIDE</key>
+		<string>__BARECLAW_DIR__</string>
+		<key>BARECLAW_HTTP_TOKEN</key>
+		<string>__BARECLAW_HTTP_TOKEN__</string>
+		<key>BARECLAW_HEARTBEAT_NOTIFY_CHANNEL</key>
+		<string>__BARECLAW_HEARTBEAT_NOTIFY_CHANNEL__</string>
+	</dict>
+
 	<key>StandardOutPath</key>
 	<string>/tmp/bareclaw-heartbeat-launchd.log</string>
 	<key>StandardErrorPath</key>

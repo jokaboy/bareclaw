@@ -49,7 +49,7 @@ src/
     process-manager.ts     # THE core — manages channels, spawns/connects session hosts, FIFO dispatch
     push-registry.ts       # Routes outbound push messages (POST /send) to the right adapter
   adapters/
-    http.ts                # POST /message, POST /restart, optional Bearer auth
+    http.ts                # POST /message, POST /restart, GET /healthz, optional Bearer auth
     telegram.ts            # Telegraf bot, long polling, required user allowlist
 ```
 
@@ -69,7 +69,7 @@ Channels are the **only abstraction ProcessManager knows about**. It has zero aw
 
 - **Adapter-agnostic.** The channel key is an opaque string. ProcessManager never parses, validates, or inspects it. Two adapters using the same channel key talk to the same Claude session — this is a feature, not a bug.
 - **One queue per channel.** Each channel has its own independent FIFO queue. Messages sent to different channels are fully concurrent. Messages sent to the _same_ channel are serialized.
-- **Persistent across restarts.** Session IDs are saved to `.bareclaw-sessions.json` keyed by channel. On reconnection, the session resumes automatically via `--resume`.
+- **Persistent across restarts.** BareClaw saves per-channel runtime state in `.bareclaw-channel-state.json` and saved raw provider sessions in `.bareclaw-sessions.json`. When you return to the same channel, it tries live reconnect first, then saved raw session resume, then continuity fallback.
 
 ### Channel key conventions
 
@@ -160,9 +160,17 @@ All configuration is via environment variables. Everything has a sensible defaul
 | `BARECLAW_MAX_TURNS` | `25` | Max agentic turns per message. Prevents runaway tool loops. |
 | `BARECLAW_ALLOWED_TOOLS` | `Read,Glob,Grep,Bash,Write,Edit,Skill,Task` | Tools auto-approved without interactive confirmation. Comma-separated. |
 | `BARECLAW_TIMEOUT_MS` | `0` | Per-message timeout. **Must be `0` (no timeout).** Sessions are persistent and agentic — responses can take minutes. A non-zero value kills the socket mid-response and corrupts channel state. |
-| `BARECLAW_HTTP_TOKEN` | *(none)* | Bearer token for HTTP auth. If unset, HTTP is unauthenticated. |
+| `BARECLAW_STALLED_TURN_IDLE_MS` | `900000` | If a busy turn produces no output for this long, BAREclaw sends one automatic interrupt. Set to `0` to disable stalled-turn recovery. |
+| `BARECLAW_STALLED_TURN_INTERRUPT_GRACE_MS` | `30000` | After the automatic interrupt, how long to wait for fresh activity before resetting that channel. |
+| `BARECLAW_STALLED_TURN_POLL_MS` | `15000` | How often BAREclaw checks busy channels for stalled-turn recovery. |
+| `BARECLAW_SESSION_FILE` | `.bareclaw-sessions.json` | Saved raw provider session map used by `auto_resume` and `raw_provider_resume` recovery. |
+| `BARECLAW_CHANNEL_STATE_FILE` | `.bareclaw-channel-state.json` | Per-thread runtime state: provider, model, startup mode, project/work-item binding, resume source, and continuity metadata. |
+| `BARECLAW_CONTINUITY_BRIDGE` | *(none)* | Optional path to the obsidian-mcp bridge script that writes canonical checkpoint/handoff artifacts and assembles startup continuity from project memory. |
+| `BARECLAW_CONTINUITY_PYTHON` | `python3` | Python binary used to execute the continuity bridge. |
+| `BARECLAW_HTTP_TOKEN` | *(none)* | Bearer token for HTTP auth. Required for all HTTP endpoints except `/healthz`. |
 | `BARECLAW_TELEGRAM_TOKEN` | *(none)* | Telegram bot token from @BotFather. Omit to disable Telegram entirely. |
 | `BARECLAW_ALLOWED_USERS` | *(none)* | Comma-separated Telegram user IDs. **Required** when Telegram is enabled. |
+| `BARECLAW_HEARTBEAT_NOTIFY_CHANNEL` | *(auto)* | Optional explicit push target for `ATTENTION:` heartbeat responses. When unset, install falls back to the first `BARECLAW_ALLOWED_USERS` entry. |
 
 ### Setting `BARECLAW_CWD`
 
@@ -172,11 +180,70 @@ This controls the project context for all `claude` processes:
 - `~` — Claude sees your global `~/.claude/CLAUDE.md` and can access anything in your home directory
 - Set to BAREclaw's own directory for self-modification
 
+## Telegram thread controls
+
+Telegram threads now carry their own persisted runtime state separate from raw provider chat history. Same DM or topic resumes automatically. Plain English is the normal path: say "start planning", "make the work item", "get to work", or "promote this project". Slash commands remain available as operator tools. Unbound threads auto-start in the default ideas lane on the next ordinary message unless you override that binding explicitly.
+
+These commands operate on the current DM, group, or forum topic channel:
+
+- `/status` — show provider, model, startup mode, binding status, capability profile, tool mode, write state/reason/remediation, work-item mode/selection mode, continuity source/sync health, and queue/busy state
+- `/help` — show the current thread state plus the full grouped command reference with exact syntax and good/bad examples
+- `/provider [list|claude|codex|ollama]` — switch provider for the thread and reset only the raw provider session
+- `/model [list|default|<model>]` — change the thread model when the selected provider exposes known models
+- `/mode [list|auto_resume|fresh_with_handoff|warm_lcm_restore|raw_provider_resume]` — advanced startup override; the default is `auto_resume`
+- `/project <vault project path>` — bind the thread to a project path and reset the live/raw provider session so the next turn starts from that project
+- `/project ideas` — bind the thread to the default shared ideas lane
+- `/project ideas-system` — bind the thread to the system ideas lane
+- `/project intake` — bind the thread to the default shared incubator lane
+- `/project intake-system` — bind the thread to the system incubator lane
+- `/project bootstrap <project_id|workspace_id/project_id|vault project path>` — create a brand-new active project lane, seed canonical continuity there, and keep the thread in planning-only mode; when a workspace is already implied by the current binding, `<project_id>` is enough
+- `/project promote [project_id]` — when bound to a queued-plan path under an intake lane, either promote it into `0 Agent Vault/Agents/10_Projects/<workspace_id>/<project_id>` immediately or queue an in-chat promotion approval when policy requires it
+- `/artifact draft <title>` — write the latest assistant planning response into a canonical draft artifact for the current active project lane
+- `/approval list [status]` — list approval requests for the current project lane (or the current filter)
+- `/approval request <work_item_title>` — queue an in-chat execution approval request tied to the current project lane and latest planning context
+- `/approval approve <request_id> [note]` — approve a queued execution request and create/bind the corresponding proposed work item, or approve a queued promotion request and activate the target project lane
+- `/approval deny <request_id> [note]` — deny a queued execution request while leaving the thread in planning-only mode
+- `/project clear` — clear stored project continuity and the raw provider session; the next ordinary message will auto-start in the default ideas lane unless you choose another project first
+- `/workitem auto` — bind the latest canonical active work item for the current project and reset the raw provider session
+- `/workitem create <title>` — explicitly create or bind a proposed work item for the current project and reset the raw provider session
+- `/workitem <work_item_id>` — pin the thread to a specific active work item for the current project
+- `/workitem start` — promote the current proposed work item to `active`
+- `/workitem verify <v0|v1|v2> <pass|fail> [best_artifact_ref|failure_mode]` — record verifier evidence for the active work item through the canonical MCP ledger
+- `/workitem settle <done|blocked|timeout|killed> [best_artifact_ref|failure_mode]` — settle the active work item through the canonical MCP ledger
+- `/workitem clear` — clear the current work-item binding, downgrade the thread to planning-only, and show the resulting capability/remediation state
+- `/handoff <summary>` — store a manual bounded handoff override for the next fresh start
+- `/handoff clear` — clear the manual handoff override and fall back to the automatic handoff
+- `/checkpoint` — inspect the latest automatic checkpoint captured for the thread
+- `/checkpoint refresh` — refresh the timestamp on the stored automatic checkpoint
+- `/new` — force the next spawn to start fresh in the same lane while keeping the current project and work-item binding
+- `/reset` — clear only the raw provider session for this thread
+- `/reset --full` — clear both the raw provider session and stored project continuity; the next ordinary message will auto-start in the default ideas lane unless you choose another project first
+
+Notes:
+
+- `auto_resume` is the default. BareClaw reconnects the live session when possible, then tries any saved raw provider session, then falls back to canonical/local continuity.
+- `fresh_with_handoff` ignores saved raw provider sessions on new spawns and injects stored continuity instead.
+- `warm_lcm_restore` now attempts an LCM restore/init through the configured continuity bridge, then falls back to canonical handoff + checkpoint context if LCM is unavailable.
+- `raw_provider_resume` reuses the saved provider session when one exists.
+- The first reply after a reconnect or fresh spawn includes a short session note: `session: resumed exact`, `session: resumed saved session`, `session: resumed continuity`, or `session: started fresh`.
+- If a thread is unbound, BareClaw auto-binds the next ordinary message into an ideas lane. System-flavored threads go to the system ideas lane; everything else defaults to the shared ideas lane.
+- `/project bootstrap` accepts `<workspace_id>/<project_id>` from an unbound thread, or just `<project_id>` when the current binding already implies the workspace (for example a workspace root or intake lane).
+- Bound project threads without an active work item stay in planning/discovery mode. On execution-like requests, BareClaw now evaluates policy automatically: if approval is required it auto-writes/reuses the latest planning draft, auto-queues approval, and surfaces `approval_pending`; if approval is not required it can still bind/create the work item directly. Manual `/artifact draft <title>`, `/approval request <work_item_title>`, `/workitem auto`, `/workitem create <title>`, and `/workitem <id>` commands remain available as operator controls.
+- BareClaw uses the final segment of the bound `/project` path as `project_id` for work-item lookup. If you bind a parent/root folder, work-item commands will not cross into child project ids; bind the leaf execution project path instead.
+- `/project promote` currently requires the thread to be bound to a queued-plan path under `20_Queued_Plans`. If BareClaw cannot derive a stable slug from that path, pass `/project promote <project_id>`. When intake metadata still requires human review, BareClaw queues `intake_project_promote` approval instead of rebinding immediately.
+- Work items in `blocked`, `done`, `timeout`, or `killed` state no longer count as execution-ready. Those threads fall back to read-only planning mode until you bind or create a new eligible work item.
+- Blocked write attempts now return structured guidance with `capability_profile`, `tool_mode`, `write_state`, `reason`, and `remediation` instead of generic execution failures.
+- Provider-side capability enforcement is fail-closed: `planning_only`, `intake_capture`, and `run_lock_blocked` threads stay read-only even if the provider tries to reach a write-capable tool path.
+- BareClaw now writes an automatic checkpoint and automatic handoff after completed turns. With `BARECLAW_CONTINUITY_BRIDGE` configured, those are flushed to canonical Obsidian artifacts under the project lane and reused on future cold starts.
+- Auto-created proposed work items are promoted to `active` automatically after the first successful write-capable turn, and the explicit `/workitem` lifecycle commands now route through the canonical MCP work-item ledger rather than local thread state.
+- Manual `/handoff` still overrides startup continuity for the current thread, but ordinary recovery no longer depends on remembering to run it.
+- `/new` is the explicit fresh-start escape hatch for users; `/mode` remains available for advanced debugging and operator overrides.
+
 ## Authentication
 
 BAREclaw has shell access. Every channel that can reach it can run arbitrary commands.
 
-- **HTTP**: set `BARECLAW_HTTP_TOKEN` for anything beyond localhost. Requests without `Authorization: Bearer <token>` get 401.
+- **HTTP**: set `BARECLAW_HTTP_TOKEN`. All HTTP endpoints except `/healthz` reject requests without `Authorization: Bearer <token>`.
 - **Telegram**: `BARECLAW_ALLOWED_USERS` is mandatory — BAREclaw refuses to start without it. Messages from users not on the allowlist are silently dropped.
 - All channels share the same `--allowedTools` set (no per-channel restrictions in V1).
 
@@ -188,18 +255,25 @@ BAREclaw can restart itself to pick up code changes:
 - `kill -HUP <pid>` — SIGHUP signal
 - Claude can trigger either via Bash
 
-On restart: all session hosts killed, HTTP server closed, new detached process spawned with same args. ~1-2s downtime.
+When `BARECLAW_SUPERVISED=1`, restart exits cleanly and lets launchd/systemd replace the daemon. Unsupervised runs still self-reexec in place. `GET /healthz` reports `live`, `ready`, Telegram availability, and startup warm-up progress.
 
 ## Heartbeat
 
-BAREclaw includes a heartbeat system — a scheduled job that fires hourly on a dedicated `"heartbeat"` channel. Works on both macOS (launchd) and Linux (systemd user timer). The server and heartbeat keep each other alive:
+BAREclaw includes two background pieces:
 
-- **Server startup** automatically installs the heartbeat job (idempotent, runs `heartbeat/install.sh`).
-- **Each heartbeat tick** checks if the server is running. If not, it starts it via `npm run dev` before sending the heartbeat message.
+- **Daemon service**: `node --env-file=.env dist/index.js` under launchd (macOS) or a user systemd service (Linux). It runs with `BARECLAW_SUPERVISED=1`, `RunAtLoad`/`WantedBy=default.target`, and automatic restart.
+- **Heartbeat**: an hourly scheduled job on the `"heartbeat"` channel that checks `/healthz`, restarts the managed daemon if needed, runs a read-only triage prompt, and only pushes a notification when the response starts with `ATTENTION:`.
+- **Knowledge scan**: an hourly lightweight web-memory health check that runs after the heartbeat and reports urgent knowledge findings on the `knowledge-scan` channel.
+- **Security scan**: an hourly lightweight scan plus a daily deep scan. Under launchd, unreadable repo files are skipped and logged instead of producing false-positive incidents.
 
-Start the server once, and it stays alive. Server crashes? Next hourly heartbeat restarts it. Heartbeat job gets unloaded? Next server start reinstalls it.
+Startup warm-up is opt-in through:
 
-The heartbeat session is persistent and separate from all user-facing channels. It accumulates context — you can message it directly to add reminders or recurring checks:
+- `BARECLAW_WARM_CHANNELS=tg-123,tg-456`
+- `BARECLAW_WARMUP_DELAY_MS=5000`
+
+Warm-up reconnects or spawns saved channel session hosts after the daemon comes up, without sending Telegram messages to the user.
+
+The heartbeat session is persistent and separate from all user-facing channels. It accumulates context, but the scheduled heartbeat itself stays read-only and uses `/send` from the shell wrapper only after an `ATTENTION:` response. You can still message the channel directly to add reminders or recurring checks:
 
 ```bash
 curl -X POST localhost:3000/message \
@@ -211,41 +285,66 @@ curl -X POST localhost:3000/message \
 
 ```
 heartbeat/
-  heartbeat.sh                    # Runner: checks server health, starts if needed, sends heartbeat
+  com.bareclaw.daemon.plist       # macOS launchd daemon template
+  heartbeat.sh                    # Runner: checks server health, runs read-only triage, forwards ATTENTION notifications
+  knowledge-scan.sh               # Lightweight web-memory assurance scan
+  security-scan.sh                # Repo security scan with hourly and daily modes
   install.sh                      # Detects OS, installs the appropriate scheduled job
+  bareclaw.service                # Linux systemd user daemon service
   com.bareclaw.heartbeat.plist    # macOS launchd template
+  com.bareclaw.security-scan.plist # macOS launchd template for daily security scan
   bareclaw-heartbeat.service      # Linux systemd oneshot service
   bareclaw-heartbeat.timer        # Linux systemd timer (1h interval)
 ```
 
 ### Manual install
 
-Normally the server handles this automatically. To install manually:
+Build first, then install the managed daemon plus heartbeat:
 
 ```bash
+npm run build
 bash heartbeat/install.sh
 ```
+
+Flags:
+
+- `bash heartbeat/install.sh --daemon-only`
+- `bash heartbeat/install.sh --heartbeat-only`
+- `bash heartbeat/install.sh --security-scan-only`
 
 ### Uninstall
 
 **macOS:**
 ```bash
-launchctl unload ~/Library/LaunchAgents/com.bareclaw.heartbeat.plist
+launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.bareclaw.daemon.plist
+launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.bareclaw.heartbeat.plist
+rm ~/Library/LaunchAgents/com.bareclaw.daemon.plist
 rm ~/Library/LaunchAgents/com.bareclaw.heartbeat.plist
 ```
 
 **Linux:**
 ```bash
+systemctl --user disable --now bareclaw.service
 systemctl --user disable --now bareclaw-heartbeat.timer
+rm ~/.config/systemd/user/bareclaw.service
 rm ~/.config/systemd/user/bareclaw-heartbeat.{service,timer}
 systemctl --user daemon-reload
 ```
 
 ### Customize
 
-Edit `heartbeat/heartbeat.sh` to change the heartbeat message. Edit the interval in the plist (`StartInterval` in seconds) or timer (`OnUnitActiveSec`). Re-run `install.sh` or restart the server to apply.
+Edit `heartbeat/heartbeat.sh` to change the triage prompt or notification behavior. Edit the interval in the plist (`StartInterval` in seconds) or timer (`OnUnitActiveSec`). Re-run `install.sh` after changing service templates.
 
-Logs: `/tmp/bareclaw-heartbeat.log`.
+On macOS, launchd jobs are staged under `~/Library/Application Support/BAREclaw/heartbeat/` before install. This avoids executing the scheduled scripts directly from a protected repo path.
+
+Logs:
+
+- `/tmp/bareclaw-daemon.log`
+- `/tmp/bareclaw-heartbeat.log`
+- `/tmp/bareclaw-knowledge-scan.log`
+- `/tmp/bareclaw-security-scan.log`
+- `/tmp/bareclaw-security-scan-stdout.log`
+- `/tmp/bareclaw-security-scan-stderr.log`
 
 ## Telegram setup
 
@@ -255,6 +354,7 @@ Logs: `/tmp/bareclaw-heartbeat.log`.
    ```bash
    BARECLAW_TELEGRAM_TOKEN=123456:ABC-DEF...
    BARECLAW_ALLOWED_USERS=your_user_id
+   BARECLAW_HEARTBEAT_NOTIFY_CHANNEL=tg-your_user_id
    ```
 4. Start BAREclaw. The bot connects via long polling — no public URL needed.
 

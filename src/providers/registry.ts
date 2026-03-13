@@ -5,6 +5,8 @@
 
 import type { Provider } from './types.js';
 import { ClaudeProvider } from './claude.js';
+import { CodexProvider } from './codex.js';
+import { OllamaProvider } from './ollama.js';
 
 const providers = new Map<string, Provider>();
 
@@ -25,5 +27,11 @@ export function listProviders(): string[] {
   return [...providers.keys()];
 }
 
+export function listProviderEntries(): Provider[] {
+  return [...providers.values()];
+}
+
 // Register built-in providers
 registerProvider(new ClaudeProvider());
+registerProvider(new CodexProvider());
+registerProvider(new OllamaProvider());

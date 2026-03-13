@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.bareclaw.security-scan</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>__SECURITY_SCAN_SCRIPT__</string>
+        <string>daily</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>6</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>/tmp/bareclaw-security-scan-stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/bareclaw-security-scan-stderr.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>BARECLAW_DIR_OVERRIDE</key>
+        <string>__BARECLAW_DIR__</string>
+        <key>BARECLAW_HTTP_TOKEN</key>
+        <string>__BARECLAW_HTTP_TOKEN__</string>
+        <key>PATH</key>
+        <string>__NODE_BIN__:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+    <key>WorkingDirectory</key>
+    <string>__LAUNCHD_WORKDIR__</string>
+</dict>
+</plist>
