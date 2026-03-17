@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import type { Config } from '../config.js';
+import { safeJsonStringify } from './string-sanitize.js';
 import type {
   BindingStatus,
   ChannelState,
@@ -405,7 +406,7 @@ class PythonContinuityClient implements ContinuityClient {
         }
       });
 
-      child.stdin.write(JSON.stringify(buildBridgeRequestPayload(payload)));
+      child.stdin.write(safeJsonStringify(buildBridgeRequestPayload(payload)));
       child.stdin.end();
     });
   }

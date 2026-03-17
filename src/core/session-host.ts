@@ -308,6 +308,21 @@ const server = createServer((socket) => {
   });
 });
 
+server.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EADDRINUSE' || err.code === 'EPERM') {
+    log(`socket error ${err.code}, unlinking stale socket and retrying`);
+    try { unlinkSync(config.socketPath); } catch {}
+    server.listen(config.socketPath, () => {
+      writeFileSync(config.pidFile, String(process.pid));
+      log(`listening on ${config.socketPath} (pid ${process.pid}) after retry`);
+    });
+    return;
+  }
+  log(`fatal server error: ${err.message}`);
+  cleanup();
+  process.exit(1);
+});
+
 server.listen(config.socketPath, () => {
   writeFileSync(config.pidFile, String(process.pid));
   log(`listening on ${config.socketPath} (pid ${process.pid})`);

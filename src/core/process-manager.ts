@@ -8,6 +8,7 @@ import { getProvider, listProviderEntries } from '../providers/registry.js';
 import { capabilityProfileToToolMode, formatCapabilityDeniedMessage } from '../providers/capability.js';
 import type { Provider } from '../providers/types.js';
 import { TSX_LOADER_SPECIFIER } from '../tsx-loader.js';
+import { safeJsonStringify } from './string-sanitize.js';
 import type { ChannelContext, ClaudeEvent, ClaudeInput, ContentBlock, SendMessageResponse } from './types.js';
 import {
   buildContinuityBlock,
@@ -492,6 +493,55 @@ export class ProcessManager {
         ? Math.max(0, Date.now() - managed.turnStartedAt)
         : null,
     };
+  }
+
+  /** Return a summary of all known channels with their state and runtime info. */
+  listChannelSnapshots(): Array<{
+    channel: string;
+    busy: boolean;
+    queueDepth: number;
+    turnElapsedMs: number | null;
+    providerId: string;
+    model: string | undefined;
+    projectPath: string | undefined;
+    activeWorkItemId: string | undefined;
+    activeWorkItemStatus: string | undefined;
+    startupMode: string;
+    bindingStatus: string;
+  }> {
+    return this.channelStateStore.listChannels().map((channel) => {
+      const state = this.channelStateStore.get(channel);
+      const runtime = this.getChannelRuntime(channel);
+      return {
+        channel,
+        busy: runtime.busy,
+        queueDepth: runtime.queueDepth,
+        turnElapsedMs: runtime.turnElapsedMs,
+        providerId: state.providerId,
+        model: state.model,
+        projectPath: state.projectPath,
+        activeWorkItemId: state.activeWorkItemId,
+        activeWorkItemStatus: state.activeWorkItemStatus,
+        startupMode: state.startupMode,
+        bindingStatus: state.bindingStatus,
+      };
+    });
+  }
+
+  /** Relay a message from one channel to another, prefixing with source context. */
+  async relay(
+    fromChannel: string,
+    toChannel: string,
+    content: MessageContent,
+    metadata?: Record<string, unknown>,
+  ): Promise<SendMessageResponse> {
+    const prefix = `[Relay from ${fromChannel}]`;
+    const metaLine = metadata ? ` (${JSON.stringify(metadata)})` : '';
+    const wrappedContent = typeof content === 'string'
+      ? `${prefix}${metaLine}: ${content}`
+      : [{ type: 'text' as const, text: `${prefix}${metaLine}:` }, ...content];
+    console.log(`[process-manager] relay ${fromChannel} -> ${toChannel}`);
+    return this.send(toChannel, wrappedContent, { channel: toChannel, adapter: 'relay' });
   }
 
   async warmChannel(channel: string): Promise<WarmChannelResult> {
@@ -2488,7 +2538,7 @@ export class ProcessManager {
     const adapterPrefix = dash > 0 ? channel.substring(0, dash) : channel;
     const adapterNames: Record<string, string> = { tg: 'telegram', http: 'http' };
 
-    const hostConfig = JSON.stringify({
+    const hostConfig = safeJsonStringify({
       channel,
       socketPath: sockPath,
       pidFile: this.pidFile(channel),
